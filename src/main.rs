@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Article {
-    id: i32,
+    id: Option<i32>,
     title: String,
     content: String,
 }
@@ -33,8 +33,9 @@ async fn create_post(article: web::Json<Article>) -> impl Responder {
     HttpResponse::Ok().json(article.into_inner())
 }
 
-async fn get_article(web::Path(id): web::Path<i32>) -> impl Responder {
+async fn get_article(id: web::Path<i32>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
+    let id = id.into_inner();
     let mut stmt = conn
         .prepare("SELECT id, title, content FROM articles WHERE id = ?1")
         .unwrap();
@@ -53,7 +54,7 @@ async fn get_article(web::Path(id): web::Path<i32>) -> impl Responder {
 
 #[get("/")]
 async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+    HttpResponse::Ok().body("Welcome to the blog")
 }
 
 #[post("/echo")]
@@ -67,11 +68,18 @@ async fn manual_hello() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    if let Err(e) = init_db() {
+        eprintln!("Failed to initialize the database: {}", e);
+        std::process::exit(1);
+    }
+
     HttpServer::new(|| {
         App::new()
             .service(hello)
             .service(echo)
             .route("/hey", web::get().to(manual_hello))
+            .service(web::resource("/posts").route(web::post().to(create_post)))
+            .service(web::resource("/posts/{id}").route(web::get().to(get_article)))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
