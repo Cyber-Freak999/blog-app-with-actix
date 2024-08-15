@@ -35,8 +35,8 @@ fn init_db() -> Result<()> {
     Ok(())
 }
 
-#[post("/posts")]
-async fn create_post(article: web::Json<Article>) -> impl Responder {
+#[post("/articles")]
+async fn create_article(article: web::Json<Article>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
     conn.execute(
         "INSERT INTO articles (title, content) VALUES (?1, ?2)",
@@ -47,7 +47,7 @@ async fn create_post(article: web::Json<Article>) -> impl Responder {
     HttpResponse::Ok().json(article.into_inner())
 }
 
-#[get("/posts/{id}")]
+#[get("/articles/{id}")]
 async fn get_article(id: web::Path<i32>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
     let id = id.into_inner();
@@ -69,6 +69,24 @@ async fn get_article(id: web::Path<i32>) -> impl Responder {
     HttpResponse::Ok().json(article)
 }
 
+#[get("/articles")]
+async fn get_articles() -> impl Responder {
+    let conn = Connection::open("blog.db").unwrap();
+    let mut stmt = conn.prepare("SELECT * FROM articles").unwrap();
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(Article {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: row.get(2)?,
+            })
+        })
+        .unwrap();
+
+    let articles: Vec<Article> = rows.filter_map(|result| result.ok()).collect();
+    HttpResponse::Ok().json(articles)
+}
+
 #[get("/")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Welcome to the blog")
@@ -84,8 +102,9 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .service(hello)
-            .service(create_post)
+            .service(create_article)
             .service(get_article)
+            .service(get_articles)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
