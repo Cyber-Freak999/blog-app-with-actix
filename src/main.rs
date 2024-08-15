@@ -9,6 +9,19 @@ struct Article {
     content: String,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct MyError {
+    message: String,
+}
+
+impl From<rusqlite::Error> for MyError {
+    fn from(err: rusqlite::Error) -> MyError {
+        MyError {
+            message: format!("{}", err),
+        }
+    }
+}
+
 fn init_db() -> Result<()> {
     let conn = Connection::open("blog.db")?;
     conn.execute(
@@ -22,6 +35,7 @@ fn init_db() -> Result<()> {
     Ok(())
 }
 
+#[post("/posts")]
 async fn create_post(article: web::Json<Article>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
     conn.execute(
@@ -33,37 +47,31 @@ async fn create_post(article: web::Json<Article>) -> impl Responder {
     HttpResponse::Ok().json(article.into_inner())
 }
 
+#[get("/posts/{id}")]
 async fn get_article(id: web::Path<i32>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
     let id = id.into_inner();
-    let mut stmt = conn
-        .prepare("SELECT id, title, content FROM articles WHERE id = ?1")
-        .unwrap();
-    let post = stmt
-        .query_row([id], |row| {
+    let article: Result<Article, MyError> = async {
+        let mut stmt = conn
+            .prepare("SELECT id, title, content FROM articles WHERE id = ?1")
+            .map_err(MyError::from)?;
+        stmt.query_row([id], |row| {
             Ok(Article {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 content: row.get(2)?,
             })
         })
-        .unwrap();
+        .map_err(MyError::from)
+    }
+    .await;
 
-    HttpResponse::Ok().json(post)
+    HttpResponse::Ok().json(article)
 }
 
 #[get("/")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Welcome to the blog")
-}
-
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
-
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there!")
 }
 
 #[actix_web::main]
@@ -76,10 +84,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .service(hello)
-            .service(echo)
-            .route("/hey", web::get().to(manual_hello))
-            .service(web::resource("/posts").route(web::post().to(create_post)))
-            .service(web::resource("/posts/{id}").route(web::get().to(get_article)))
+            .service(create_post)
+            .service(get_article)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
