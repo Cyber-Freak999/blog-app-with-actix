@@ -1,6 +1,4 @@
-use std::fmt::format;
-
-use actix_web::{get, post, put, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{delete, get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 
@@ -110,6 +108,23 @@ async fn update_article(id: web::Path<i32>, article: web::Json<Article>) -> impl
     HttpResponse::Ok().json(article.into_inner())
 }
 
+#[delete("/articles/{id}")]
+async fn delete_article(id: web::Path<i32>) -> impl Responder {
+    let id = id.into_inner();
+    let conn = Connection::open("blog.db").unwrap();
+    let deleted_row = conn
+        .execute("DELETE FROM articles WHERE ID=?1", (&id,))
+        .unwrap();
+
+    if deleted_row == 0 {
+        return HttpResponse::NotFound().json(MyError {
+            message: format!("Article with id {} not found", id),
+        });
+    }
+
+    HttpResponse::Ok().json(format!("Deleted article with id: {}", id))
+}
+
 #[get("/")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Welcome to the blog")
@@ -129,6 +144,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_article)
             .service(get_articles)
             .service(update_article)
+            .service(delete_article)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
