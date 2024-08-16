@@ -1,4 +1,6 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use std::fmt::format;
+
+use actix_web::{get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 
@@ -26,9 +28,10 @@ fn init_db() -> Result<()> {
     let conn = Connection::open("blog.db")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS articles (
-            id      INTEGER PRIMARY KEY,
-            title   TEXT NOT NULL,
-            content TEXT NOT NULL
+            ID      INTEGER NOT NULL,
+            TITLE   TEXT NOT NULL,
+            CONTENT TEXT NOT NULL,
+            PRIMARY KEY (ID)
         )",
         [],
     )?;
@@ -39,7 +42,7 @@ fn init_db() -> Result<()> {
 async fn create_article(article: web::Json<Article>) -> impl Responder {
     let conn = Connection::open("blog.db").unwrap();
     conn.execute(
-        "INSERT INTO articles (title, content) VALUES (?1, ?2)",
+        "INSERT INTO articles (TITLE, CONTENT) VALUES (?1, ?2)",
         (&article.title, &article.content),
     )
     .unwrap();
@@ -53,7 +56,7 @@ async fn get_article(id: web::Path<i32>) -> impl Responder {
     let id = id.into_inner();
     let article: Result<Article, MyError> = async {
         let mut stmt = conn
-            .prepare("SELECT id, title, content FROM articles WHERE id = ?1")
+            .prepare("SELECT ID, TITLE, CONTENT FROM articles WHERE ID = ?1")
             .map_err(MyError::from)?;
         stmt.query_row([id], |row| {
             Ok(Article {
@@ -87,6 +90,26 @@ async fn get_articles() -> impl Responder {
     HttpResponse::Ok().json(articles)
 }
 
+#[put("/articles/{id}")]
+async fn update_article(id: web::Path<i32>, article: web::Json<Article>) -> impl Responder {
+    let id = id.into_inner();
+    let conn = Connection::open("blog.db").unwrap();
+    let updated_row = conn
+        .execute(
+            "UPDATE articles SET TITLE=?1, CONTENT=?2 WHERE ID = ?3",
+            (&article.title, &article.content, &id),
+        )
+        .unwrap();
+
+    if updated_row == 0 {
+        return HttpResponse::NotFound().json(MyError {
+            message: format!("Article with id {} not found", id),
+        });
+    }
+
+    HttpResponse::Ok().json(article.into_inner())
+}
+
 #[get("/")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Welcome to the blog")
@@ -105,6 +128,7 @@ async fn main() -> std::io::Result<()> {
             .service(create_article)
             .service(get_article)
             .service(get_articles)
+            .service(update_article)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
