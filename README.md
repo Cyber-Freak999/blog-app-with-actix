@@ -1,5 +1,6 @@
 # Blogging API mad with Actix
 Covering the basic CRUD operations
+
 Difficulty: Easy
 
 # TODO
@@ -10,3 +11,6 @@ Difficulty: Easy
 - [x] Update a single airticle using its ID 
 - [x] Delete a single article specified by the ID 
 - [x] Update a single article using its ID 
+
+
+Made with referrence to [Roadmap.sh](https://roadmap.sh/projects/personal-blog)
